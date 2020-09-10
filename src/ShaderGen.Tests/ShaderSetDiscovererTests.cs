@@ -22,17 +22,17 @@ namespace ShaderGen.Tests
             LanguageBackend backend = toolChain.CreateBackend(compilation);
             ShaderGenerator sg = new ShaderGenerator(compilation, backend);
             ShaderGenerationResult generationResult = sg.GenerateShaders();
-            IReadOnlyList<GeneratedShaderSet> hlslSets = generationResult.GetOutput(backend);
+            IReadOnlyList<ShaderSetSource> hlslSets = generationResult.GetOutput(backend);
             Assert.Equal(2, hlslSets.Count); // Was 4, not sure how to count these.
-            GeneratedShaderSet set = hlslSets[0];
+            ShaderSetSource setSource = hlslSets[0];
             
             //Updated to new naming convention
-            Assert.Equal(set.VertexFunction.DeclaringType + "." + set.VertexFunction.Name + "+" + set.FragmentFunction.DeclaringType + "." + set.FragmentFunction.Name, set.Name);
+            Assert.Equal(setSource.VertexFunction.DeclaringType + "." + setSource.VertexFunction.Name + "+" + setSource.FragmentFunction.DeclaringType + "." + setSource.FragmentFunction.Name, setSource.Name);
 
-            CompileResult result = toolChain.Compile(set.VertexShaderCode, Stage.Vertex, "VS");
+            CompileResult result = toolChain.Compile(setSource.VertexShaderCode, Stage.Vertex, "VS");
             Assert.False(result.HasError, result.ToString());
 
-            result = toolChain.Compile(set.FragmentShaderCode, Stage.Fragment, "FS");
+            result = toolChain.Compile(setSource.FragmentShaderCode, Stage.Fragment, "FS");
             Assert.False(result.HasError, result.ToString());
         }
     }

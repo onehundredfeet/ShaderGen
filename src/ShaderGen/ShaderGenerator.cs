@@ -156,7 +156,7 @@ namespace ShaderGen
             foreach (IShaderSetProcessor processor in _processors)
             {
                 // Kind of a hack, but the relevant info should be the same.
-                foreach (GeneratedShaderSet gss in result.GetOutput(_languages.First()))
+                foreach (ShaderSetSource gss in result.GetOutput(_languages.First()))
                 {
                     ShaderSetProcessorInput input = new ShaderSetProcessorInput(
                         gss.Name,
@@ -231,7 +231,7 @@ namespace ShaderGen
 
                 result.AddShaderSet(
                     language,
-                    new GeneratedShaderSet(ss.Name, vsCode, fsCode, csCode, vsFunc, fsFunc, csFunc, model));
+                    new ShaderSetSource(ss.Name, vsCode, fsCode, csCode, vsFunc, fsFunc, csFunc, model));
             }
         }
 

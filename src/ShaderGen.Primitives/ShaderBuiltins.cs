@@ -303,6 +303,14 @@ namespace ShaderGen
         public static Vector3 Radians(Vector3 value) => new Vector3(value.X / DegreesPerRadian, value.Y / DegreesPerRadian, value.Z / DegreesPerRadian);
         public static Vector4 Radians(Vector4 value) => new Vector4(value.X / DegreesPerRadian, value.Y / DegreesPerRadian, value.Z / DegreesPerRadian, value.W / DegreesPerRadian);
 
+        // Reciprical
+        public static float Rcp(float x) => 1.0f / x;
+
+        
+        // Reflect
+        public static Vector3 Reflect(Vector3 i, Vector3 n) =>  throw new ShaderBuiltinException();
+
+        
         // Round
         public static float Round(float value) => (float)Math.Round(value);
         public static Vector2 Round(Vector2 value) => new Vector2((float)Math.Round(value.X), (float)Math.Round(value.Y));

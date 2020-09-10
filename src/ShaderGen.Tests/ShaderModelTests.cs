@@ -18,7 +18,7 @@ namespace ShaderGen.Tests
             HlslBackend backend = new HlslBackend(compilation);
             ShaderGenerator sg = new ShaderGenerator(compilation, backend, functionName);
             ShaderGenerationResult genResult = sg.GenerateShaders();
-            IReadOnlyList<GeneratedShaderSet> sets = genResult.GetOutput(backend);
+            IReadOnlyList<ShaderSetSource> sets = genResult.GetOutput(backend);
             Assert.Equal(1, sets.Count);
             ShaderModel shaderModel = sets[0].Model;
 
@@ -39,7 +39,7 @@ namespace ShaderGen.Tests
             HlslBackend backend = new HlslBackend(compilation);
             ShaderGenerator sg = new ShaderGenerator(compilation, backend, functionName);
             ShaderGenerationResult genResult = sg.GenerateShaders();
-            IReadOnlyList<GeneratedShaderSet> sets = genResult.GetOutput(backend);
+            IReadOnlyList<ShaderSetSource> sets = genResult.GetOutput(backend);
             Assert.Equal(1, sets.Count);
             ShaderModel shaderModel = sets[0].Model;
 
@@ -67,11 +67,11 @@ namespace ShaderGen.Tests
             ShaderGenerator sg = new ShaderGenerator(compilation, backend, "TestShaders.PartialVertex.VertexShaderFunc");
 
             ShaderGenerationResult genResult = sg.GenerateShaders();
-            IReadOnlyList<GeneratedShaderSet> sets = genResult.GetOutput(backend);
+            IReadOnlyList<ShaderSetSource> sets = genResult.GetOutput(backend);
             Assert.Equal(1, sets.Count);
-            GeneratedShaderSet set = sets[0];
-            ShaderModel shaderModel = set.Model;
-            string vsCode = set.VertexShaderCode;
+            ShaderSetSource setSource = sets[0];
+            ShaderModel shaderModel = setSource.Model;
+            string vsCode = setSource.VertexShaderCode;
             CompileResult result = toolChain.Compile(vsCode, Stage.Vertex, "VertexShaderFunc");
             Assert.False(result.HasError, result.ToString());
         }
@@ -84,10 +84,10 @@ namespace ShaderGen.Tests
             ShaderGenerator sg = new ShaderGenerator(compilation, backend, "TestShaders.PointLightTestShaders.VS");
 
             ShaderGenerationResult genResult = sg.GenerateShaders();
-            IReadOnlyList<GeneratedShaderSet> sets = genResult.GetOutput(backend);
+            IReadOnlyList<ShaderSetSource> sets = genResult.GetOutput(backend);
             Assert.Equal(1, sets.Count);
-            GeneratedShaderSet set = sets[0];
-            ShaderModel shaderModel = set.Model;
+            ShaderSetSource setSource = sets[0];
+            ShaderModel shaderModel = setSource.Model;
 
             Assert.Single(shaderModel.AllResources);
             Assert.Equal(208, shaderModel.GetTypeSize(shaderModel.AllResources[0].ValueType));
@@ -101,10 +101,10 @@ namespace ShaderGen.Tests
             ShaderGenerator sg = new ShaderGenerator(compilation, backend, "TestShaders.MultipleResourceSets.VS");
 
             ShaderGenerationResult genResult = sg.GenerateShaders();
-            IReadOnlyList<GeneratedShaderSet> sets = genResult.GetOutput(backend);
+            IReadOnlyList<ShaderSetSource> sets = genResult.GetOutput(backend);
             Assert.Equal(1, sets.Count);
-            GeneratedShaderSet set = sets[0];
-            ShaderModel shaderModel = set.Model;
+            ShaderSetSource setSource = sets[0];
+            ShaderModel shaderModel = setSource.Model;
 
             Assert.Equal(13, shaderModel.AllResources.Length);
 
@@ -147,10 +147,10 @@ namespace ShaderGen.Tests
                 compilation, backend, "TestShaders.UsedResourcesShaders.VS", "TestShaders.UsedResourcesShaders.FS");
 
             ShaderGenerationResult genResult = sg.GenerateShaders();
-            IReadOnlyList<GeneratedShaderSet> sets = genResult.GetOutput(backend);
+            IReadOnlyList<ShaderSetSource> sets = genResult.GetOutput(backend);
             Assert.Equal(1, sets.Count);
-            GeneratedShaderSet set = sets[0];
-            ShaderModel shaderModel = set.Model;
+            ShaderSetSource setSource = sets[0];
+            ShaderModel shaderModel = setSource.Model;
 
             Assert.Equal(4, shaderModel.VertexResources.Length);
             Assert.Contains(shaderModel.VertexResources, rd => rd.Name == "VS_M0");
@@ -174,10 +174,10 @@ namespace ShaderGen.Tests
             ShaderGenerator sg = new ShaderGenerator(compilation, backend, "TestShaders.StructureSizeTests.VS");
 
             ShaderGenerationResult genResult = sg.GenerateShaders();
-            IReadOnlyList<GeneratedShaderSet> sets = genResult.GetOutput(backend);
+            IReadOnlyList<ShaderSetSource> sets = genResult.GetOutput(backend);
             Assert.Equal(1, sets.Count);
-            GeneratedShaderSet set = sets[0];
-            ShaderModel shaderModel = set.Model;
+            ShaderSetSource setSource = sets[0];
+            ShaderModel shaderModel = setSource.Model;
 
             StructureDefinition test0 = shaderModel.GetStructureDefinition(
                     nameof(TestShaders) + "." + nameof(StructureSizeTests) + "+" + nameof(StructureSizeTests.SizeTest_0));

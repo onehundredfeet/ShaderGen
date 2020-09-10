@@ -15,6 +15,7 @@ using ShaderGen.Glsl;
 using ShaderGen.Hlsl;
 using ShaderGen.Metal;
 using SharpDX.D3DCompiler;
+using System.Numerics;
 
 namespace ShaderGen.App
 {
@@ -37,6 +38,8 @@ namespace ShaderGen.App
 
         public static int Main(string[] args)
         {
+            Console.Error.WriteLine("ShaderGen Version 1.2.0");
+            
             string referenceItemsResponsePath = null;
             string compileItemsResponsePath = null;
             string outputPath = null;
@@ -51,33 +54,60 @@ namespace ShaderGen.App
                 args[i] = args[i].Replace("\\\\", "\\");
             }
 
-            ArgumentSyntax.Parse(args, syntax =>
+            bool HLSLEnabled = true;
+            bool GLSL3_3_0Enabled = false;
+            bool GLSLES3_0_0Enabled = false;
+            bool GLSL4_5_0Enabled = false;
+            bool MetalEnabled = false;
+
+            string dxcOptions = "";
+
+            
+            var syntax = ArgumentSyntax.Parse(args, syntax =>
             {
-                syntax.DefineOption("ref", ref referenceItemsResponsePath, true, "The semicolon-separated list of references to compile against.");
                 syntax.DefineOption("src", ref compileItemsResponsePath, true, "The semicolon-separated list of source files to compile.");
-                syntax.DefineOption("out", ref outputPath, true, "The output path for the generated shaders.");
-                syntax.DefineOption("genlist", ref genListFilePath, true, "The output file to store the list of generated files.");
+                syntax.DefineOption("ref", ref referenceItemsResponsePath, false, "The semicolon-separated list of references to compile against.");
+                syntax.DefineOption("out", ref outputPath, false, "The output path for the generated shaders.");
+                syntax.DefineOption("genlist", ref genListFilePath, false, "The output file to store the list of generated files.");
                 syntax.DefineOption("listall", ref listAllFiles, false, "Forces all generated files to be listed in the list file. By default, only bytecode files will be listed and not the original shader code.");
                 syntax.DefineOption("processor", ref processorPath, false, "The path of an assembly containing IShaderSetProcessor types to be used to post-process GeneratedShaderSet objects.");
                 syntax.DefineOption("processorargs", ref processorArgs, false, "Custom information passed to IShaderSetProcessor.");
                 syntax.DefineOption("debug", ref debug, false, "Compiles the shader with debug information when supported.");
+                syntax.DefineOption("hlsl", ref HLSLEnabled, false, "Outputs HLSL code (default true)");
+                syntax.DefineOption("metal", ref MetalEnabled, false, "Outputs metal code (default false)");
+                syntax.DefineOption("glsl3_3", ref GLSL3_3_0Enabled, false, "Outputs GLSL 3.3 code (default false)");
+                syntax.DefineOption("glsles3_0", ref GLSLES3_0_0Enabled, false, "Outputs GLSL ES 3.0 code (default false)");
+                syntax.DefineOption("glsl4_5", ref GLSL4_5_0Enabled, false, "Outputs GLSL 4.5 code (default false)");
+                syntax.DefineOption("dxcoptions", ref dxcOptions, false, "Additional command line parameters for dxc");
+                syntax.HandleHelp = true;
             });
 
-            referenceItemsResponsePath = NormalizePath(referenceItemsResponsePath);
-            compileItemsResponsePath = NormalizePath(compileItemsResponsePath);
-            outputPath = NormalizePath(outputPath);
-            genListFilePath = NormalizePath(genListFilePath);
+            
+            compileItemsResponsePath = compileItemsResponsePath?.Trim();
+            outputPath = outputPath?.Trim();
+            genListFilePath = genListFilePath?.Trim();
             processorPath = NormalizePath(processorPath);
 
-            if (!File.Exists(referenceItemsResponsePath))
+
+            if (referenceItemsResponsePath?.Length > 0)
             {
-                Console.Error.WriteLine("Reference items response file does not exist: " + referenceItemsResponsePath);
-                return -1;
+                referenceItemsResponsePath = NormalizePath(referenceItemsResponsePath);
+                if (!File.Exists(referenceItemsResponsePath))
+                {
+                    Console.Error.WriteLine("Reference items response file does not exist: " + referenceItemsResponsePath);
+                    return -1;
+                }
             }
             if (!File.Exists(compileItemsResponsePath))
             {
                 Console.Error.WriteLine("Compile items response file does not exist: " + compileItemsResponsePath);
+                Console.Error.WriteLine( syntax.GetHelpText() );
                 return -1;
+            }
+
+            if (string.IsNullOrEmpty(outputPath))
+            {
+                outputPath = ".";
             }
             if (!Directory.Exists(outputPath))
             {
@@ -92,7 +122,15 @@ namespace ShaderGen.App
                 }
             }
 
-            string[] referenceItems = File.ReadAllLines(referenceItemsResponsePath);
+            if (string.IsNullOrEmpty(genListFilePath))
+            {
+                genListFilePath = "generated.txt";
+            }
+            string[] referenceItems = new string[0];
+            if (!string.IsNullOrEmpty(referenceItemsResponsePath))
+            {
+                referenceItems = File.ReadAllLines(referenceItemsResponsePath);
+            }
             string[] compileItems = File.ReadAllLines(compileItemsResponsePath);
 
             List<MetadataReference> references = new List<MetadataReference>();
@@ -110,7 +148,21 @@ namespace ShaderGen.App
                 }
             }
 
+            foreach (var a in System.Runtime.Loader.AssemblyLoadContext.Default.Assemblies)
+            {
+                //Console.WriteLine(a.Location);
+                references.Add(MetadataReference.CreateFromFile(a.Location));
+            }
+            
+            //numerics
+            Type t = typeof(System.Numerics.Matrix4x4);
+            if (t.Assembly.FullName != null)
+            {
+                references.Add(MetadataReference.CreateFromFile(t.Assembly.Location));
+            }
+            
             List<SyntaxTree> syntaxTrees = new List<SyntaxTree>();
+            var prefix = "\n";
             foreach (string sourcePath in compileItems)
             {
                 string fullSourcePath = Path.Combine(Environment.CurrentDirectory, sourcePath);
@@ -120,32 +172,34 @@ namespace ShaderGen.App
                     return 1;
                 }
 
-                using (FileStream fs = File.OpenRead(fullSourcePath))
-                {
-                    SourceText text = SourceText.From(fs);
-                    syntaxTrees.Add(CSharpSyntaxTree.ParseText(text, path: fullSourcePath));
-                }
+                SourceText text = SourceText.From( prefix + File.ReadAllText(fullSourcePath));
+                syntaxTrees.Add(CSharpSyntaxTree.ParseText(text, path: fullSourcePath));
             }
+            
 
+
+            var options = new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary);
+            
+            
             Compilation compilation = CSharpCompilation.Create(
                 "ShaderGen.App.GenerateShaders",
                 syntaxTrees,
                 references,
-                options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+                options);
 
-            HlslBackend hlsl = new HlslBackend(compilation);
-            Glsl330Backend glsl330 = new Glsl330Backend(compilation);
-            GlslEs300Backend glsles300 = new GlslEs300Backend(compilation);
-            Glsl450Backend glsl450 = new Glsl450Backend(compilation);
-            MetalBackend metal = new MetalBackend(compilation);
-            LanguageBackend[] languages = new LanguageBackend[]
+            Console.WriteLine("Begining Compilation...");
+            foreach (var d in compilation.GetDiagnostics())
             {
-                hlsl,
-                glsl330,
-                glsles300,
-                glsl450,
-                metal,
-            };
+                Console.WriteLine(d.ToString());
+            }
+
+            List<LanguageBackend> languages = new List<LanguageBackend>();
+
+            if (HLSLEnabled) languages.Add(new HlslBackend(compilation));
+            if (GLSL3_3_0Enabled) languages.Add(new Glsl330Backend(compilation));
+            if (GLSLES3_0_0Enabled) languages.Add(new GlslEs300Backend(compilation));
+            if (GLSL4_5_0Enabled) languages.Add(new Glsl450Backend(compilation));
+            if (MetalEnabled) languages.Add(new MetalBackend(compilation));
 
             List<IShaderSetProcessor> processors = new List<IShaderSetProcessor>();
             if (processorPath != null)
@@ -170,7 +224,7 @@ namespace ShaderGen.App
                 }
             }
 
-            ShaderGenerator sg = new ShaderGenerator(compilation, languages, processors.ToArray());
+            ShaderGenerator sg = new ShaderGenerator(compilation, languages.ToArray(), processors.ToArray());
             ShaderGenerationResult shaderGenResult;
             try
             {
@@ -190,9 +244,11 @@ namespace ShaderGen.App
             foreach (LanguageBackend lang in languages)
             {
                 string extension = BackendExtension(lang);
-                IReadOnlyList<GeneratedShaderSet> sets = shaderGenResult.GetOutput(lang);
-                foreach (GeneratedShaderSet set in sets)
+                Console.WriteLine("Compiling for " + extension);
+                IReadOnlyList<ShaderSetSource> sets = shaderGenResult.GetOutput(lang);
+                foreach (ShaderSetSource set in sets)
                 {
+                    Console.WriteLine("\tShader set " + set.Name);
                     string name = set.Name;
                     if (set.VertexShaderCode != null)
                     {
@@ -208,12 +264,19 @@ namespace ShaderGen.App
                             debug);
                         if (succeeded)
                         {
+                            Console.WriteLine("\t\tCompiled vertex shader " + vsOutPath );
+
                             generatedFilePaths.AddRange(genPaths);
                         }
                         if (!succeeded || listAllFiles)
                         {
+                            Console.WriteLine("\t\tCompilation failed for " + vsOutPath);
                             generatedFilePaths.Add(vsOutPath);
                         }
+                    }
+                    else
+                    {
+                        Console.WriteLine("\t\tNo vertex shader");
                     }
                     if (set.FragmentShaderCode != null)
                     {
@@ -229,13 +292,22 @@ namespace ShaderGen.App
                             debug);
                         if (succeeded)
                         {
+                            Console.WriteLine("\t\tCompiled fragment shader " + fsOutPath );
+
                             generatedFilePaths.AddRange(genPaths);
                         }
                         if (!succeeded || listAllFiles)
                         {
+                            Console.WriteLine("\t\tCompilation failed for " + fsOutPath);
+
                             generatedFilePaths.Add(fsOutPath);
                         }
                     }
+                    else
+                    {
+                        Console.WriteLine("\t\tNo fragment shader");
+                    }
+
                     if (set.ComputeShaderCode != null)
                     {
                         string csOutName = name + "-compute." + extension;
@@ -250,31 +322,34 @@ namespace ShaderGen.App
                             debug);
                         if (succeeded)
                         {
+                            Console.WriteLine("\t\tCompiled compute shader " + csOutPath );
                             generatedFilePaths.AddRange(genPaths);
                         }
+
                         if (!succeeded || listAllFiles)
                         {
+                            Console.WriteLine("\t\tCompilation failed for " + csOutPath);
                             generatedFilePaths.Add(csOutPath);
                         }
+                    }
+                    else
+                    {
+                        Console.WriteLine("\t\tNo compute shader");
                     }
                 }
             }
 
-            File.WriteAllLines(genListFilePath, generatedFilePaths);
+            if (!string.IsNullOrEmpty(genListFilePath))
+            {
+                File.WriteAllLines(genListFilePath, generatedFilePaths);
+            }
 
             return 0;
         }
 
         private static string NormalizePath(string path)
         {
-            if (path == null)
-            {
-                return null;
-            }
-            else
-            {
-                return path.Trim();
-            }
+            return path?.Trim();
         }
 
         private static bool CompileCode(LanguageBackend lang, string shaderPath, string entryPoint, ShaderFunctionType type, out string[] paths, bool debug)
@@ -286,11 +361,16 @@ namespace ShaderGen.App
                 paths = new[] { path };
                 return result;
             }
-            else if (langType == typeof(Glsl450Backend) && IsGlslangValidatorAvailable())
+            else if (langType == typeof(Glsl450Backend))
             {
-                bool result = CompileSpirv(shaderPath, entryPoint, type, out string path);
-                paths = new[] { path };
-                return result;
+                if (IsGlslangValidatorAvailable())
+                {
+                    bool result = CompileSpirv(shaderPath, entryPoint, type, out string path);
+                    paths = new[] { path };
+                    return result;
+                }
+                paths = Array.Empty<string>();
+                return true;
             }
             else if (langType == typeof(MetalBackend) && AreMetalMacOSToolsAvailable() && AreMetaliOSToolsAvailable())
             {
@@ -298,6 +378,11 @@ namespace ShaderGen.App
                 bool iosResult = CompileMetal(shaderPath, false, out string pathiOS);
                 paths = new[] { pathMacOS, pathiOS };
                 return macOSresult && iosResult;
+            }
+            else if (langType == typeof(Glsl330Backend) || langType == typeof(GlslEs300Backend))
+            {
+                paths = Array.Empty<string>();
+                return true;
             }
             else
             {
@@ -308,7 +393,11 @@ namespace ShaderGen.App
 
         private static bool CompileHlsl(string shaderPath, string entryPoint, ShaderFunctionType type, out string path, bool debug)
         {
+#if OS_WINDOWS
             return CompileHlslBySharpDX(shaderPath, entryPoint, type, out path, debug);
+#else
+            return CompileHlslByDXC(shaderPath, entryPoint, type, out path, debug);
+#endif
         }
 
         [Obsolete]
@@ -396,6 +485,61 @@ namespace ShaderGen.App
             return false;
         }
 
+        //Copied from OpenPachinko/master without replacing the original CompileHlslBySharpDX on windows
+        private static bool CompileHlslByDXC(string shaderPath, string entryPoint, ShaderFunctionType type, out string path, bool debug)
+        {
+            // https://github.com/microsoft/DirectXShaderCompiler
+            // https://translate.google.co.jp/translate?hl=ja&sl=ja&tl=en&u=https%3A%2F%2Fmonobook.org%2Fwiki%2FDirectX_Shader_Compiler
+            var cmd = "dxc";
+
+            var optimize = debug ? "-Od -Zi" : "-O3";
+
+            //var profile = type switch
+            //{
+            //    ShaderFunctionType.VertexEntryPoint   => "vs_6_0",
+            //    ShaderFunctionType.FragmentEntryPoint => "ps_6_0",
+            //    _ => "cs_6_0",
+            //};
+            var profile = "";
+            switch (type)
+            {
+                case ShaderFunctionType.VertexEntryPoint  : profile = "vs_6_0";break;
+                case ShaderFunctionType.FragmentEntryPoint: profile = "ps_6_0";break;
+                case ShaderFunctionType.ComputeEntryPoint : profile = "cs_6_0";break;
+                default: throw new NotSupportedException();
+            }
+
+            var outputPath = shaderPath + ".dxil";
+
+            var args = $"{optimize} -T {profile} -E {entryPoint} {shaderPath} -Fo {outputPath} ";
+
+            try
+            {
+                var psi = new ProcessStartInfo(cmd, args);
+                psi.RedirectStandardError  = true;
+                psi.RedirectStandardOutput = true;
+                var p = Process.Start(psi);
+                p.WaitForExit();
+
+                if (p.ExitCode == 0)
+                {
+                    path = outputPath;
+                    return true;
+                }
+                else
+                {
+                    throw new ShaderGenerationException(p.StandardOutput.ReadToEnd());
+                }
+            }
+            catch (Win32Exception)
+            {
+                Console.WriteLine($"Unable to launch {cmd} tool.");
+            }
+
+            path = null;
+            return false;
+        }
+        
         private static bool CompileSpirv(string shaderPath, string entryPoint, ShaderFunctionType type, out string path)
         {
             string stage = type == ShaderFunctionType.VertexEntryPoint ? "vert"

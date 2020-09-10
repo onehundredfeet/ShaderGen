@@ -90,29 +90,29 @@ namespace ShaderGen.Tests
 
             ShaderGenerationResult generationResult = sg.GenerateShaders();
 
-            IReadOnlyList<GeneratedShaderSet> sets = generationResult.GetOutput(backend);
+            IReadOnlyList<ShaderSetSource> sets = generationResult.GetOutput(backend);
             Assert.Equal(1, sets.Count);
-            GeneratedShaderSet set = sets[0];
-            ShaderModel shaderModel = set.Model;
+            ShaderSetSource setSource = sets[0];
+            ShaderModel shaderModel = setSource.Model;
 
             List<CompileResult> results = new List<CompileResult>();
             if (!string.IsNullOrWhiteSpace(vsName))
             {
                 ShaderFunction vsFunction = shaderModel.GetFunction(vsName);
-                string vsCode = set.VertexShaderCode;
+                string vsCode = setSource.VertexShaderCode;
 
                 results.Add(toolChain.Compile(vsCode, Stage.Vertex, vsFunction.Name));
             }
             if (!string.IsNullOrWhiteSpace(fsName))
             {
                 ShaderFunction fsFunction = shaderModel.GetFunction(fsName);
-                string fsCode = set.FragmentShaderCode;
+                string fsCode = setSource.FragmentShaderCode;
                 results.Add(toolChain.Compile(fsCode, Stage.Fragment, fsFunction.Name));
             }
             if (!string.IsNullOrWhiteSpace(csName))
             {
                 ShaderFunction csFunction = shaderModel.GetFunction(csName);
-                string csCode = set.ComputeShaderCode;
+                string csCode = setSource.ComputeShaderCode;
                 results.Add(toolChain.Compile(csCode, Stage.Compute, csFunction.Name));
             }
 
@@ -167,11 +167,11 @@ namespace ShaderGen.Tests
             foreach (LanguageBackend backend in backends)
             {
                 ToolChain toolChain = ToolChain.Get(backend);
-                IReadOnlyList<GeneratedShaderSet> sets = generationResult.GetOutput(backend);
+                IReadOnlyList<ShaderSetSource> sets = generationResult.GetOutput(backend);
                 _output.WriteLine(spacer1);
                 _output.WriteLine($"Generated shader sets for {toolChain.Name} backend.");
 
-                foreach (GeneratedShaderSet set in sets)
+                foreach (ShaderSetSource set in sets)
                 {
                     _output.WriteLine(string.Empty);
                     _output.WriteLine(spacer2);
